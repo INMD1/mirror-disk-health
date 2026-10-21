@@ -1,0 +1,75 @@
+{
+ "json_format_version": [
+  1,
+  0
+ ],
+ "smartctl": {
+  "version": [
+   7,
+   4
+  ],
+  "exit_status": 0
+ },
+ "device": {
+  "name": "/dev/sdc",
+  "type": "scsi",
+  "protocol": "SCSI"
+ },
+ "scsi_vendor": "SEAGATE",
+ "scsi_product": "ST4000NM0023",
+ "scsi_model_name": "SEAGATE ST4000NM0023",
+ "scsi_revision": "0004",
+ "serial_number": "Z1Z0SAS1",
+ "user_capacity": {
+  "blocks": 7814037168,
+  "bytes": 4000787030016
+ },
+ "logical_block_size": 512,
+ "rotation_rate": 7200,
+ "smart_support": {
+  "available": true,
+  "enabled": true
+ },
+ "smart_status": {
+  "passed": true
+ },
+ "temperature": {
+  "current": 44
+ },
+ "power_on_time": {
+  "hours": 51000,
+  "minutes": 12
+ },
+ "scsi_grown_defect_list": 2,
+ "scsi_start_stop_cycle_counter": {
+  "accumulated_start_stop_cycles": 30
+ },
+ "scsi_error_counter_log": {
+  "read": {
+   "errors_corrected_by_eccfast": 1,
+   "total_uncorrected_errors": 0,
+   "gigabytes_processed": "123456.789"
+  },
+  "write": {
+   "total_uncorrected_errors": 0,
+   "gigabytes_processed": "45678.123"
+  },
+  "verify": {
+   "total_uncorrected_errors": 0,
+   "gigabytes_processed": "0.000"
+  }
+ },
+ "scsi_self_test_0": {
+  "code": {
+   "value": 1,
+   "string": "Background short"
+  },
+  "result": {
+   "value": 0,
+   "string": "Completed"
+  },
+  "power_on_time": {
+   "hours": 50990
+  }
+ }
+}

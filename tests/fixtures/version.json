@@ -1,0 +1,21 @@
+{
+ "json_format_version": [
+  1,
+  0
+ ],
+ "smartctl": {
+  "version": [
+   7,
+   4
+  ],
+  "svn_revision": "5530",
+  "platform_info": "x86_64-linux",
+  "build_info": "(local build)",
+  "argv": [
+   "smartctl",
+   "-j",
+   "--version"
+  ],
+  "exit_status": 0
+ }
+}

@@ -1,0 +1,224 @@
+{
+ "json_format_version": [
+  1,
+  0
+ ],
+ "smartctl": {
+  "version": [
+   7,
+   4
+  ],
+  "exit_status": 0
+ },
+ "device": {
+  "name": "/dev/sdb",
+  "type": "sat",
+  "protocol": "ATA"
+ },
+ "model_name": "Samsung SSD 870 EVO 1TB",
+ "serial_number": "S6PTNX0T123456",
+ "wwn": {
+  "naa": 5,
+  "oui": 9528,
+  "id": 22222222222
+ },
+ "firmware_version": "SVT02B6Q",
+ "user_capacity": {
+  "blocks": 1953525168,
+  "bytes": 1000204886016
+ },
+ "logical_block_size": 512,
+ "rotation_rate": 0,
+ "smart_support": {
+  "available": true,
+  "enabled": true
+ },
+ "smart_status": {
+  "passed": true
+ },
+ "ata_smart_data": {
+  "self_test": {
+   "status": {
+    "value": 249,
+    "string": "in progress, 90% remaining",
+    "remaining_percent": 90
+   }
+  }
+ },
+ "ata_smart_attributes": {
+  "revision": 1,
+  "table": [
+   {
+    "id": 5,
+    "name": "Reallocated_Sector_Ct",
+    "value": 100,
+    "worst": 100,
+    "thresh": 10,
+    "when_failed": "",
+    "flags": {
+     "value": 51,
+     "string": "PO--CK",
+     "prefailure": true,
+     "updated_online": true,
+     "performance": false,
+     "error_rate": false,
+     "event_count": false,
+     "auto_keep": true
+    },
+    "raw": {
+     "value": 0,
+     "string": "0"
+    }
+   },
+   {
+    "id": 9,
+    "name": "Power_On_Hours",
+    "value": 98,
+    "worst": 98,
+    "thresh": 0,
+    "when_failed": "",
+    "flags": {
+     "value": 50,
+     "string": "PO--CK",
+     "prefailure": false,
+     "updated_online": true,
+     "performance": false,
+     "error_rate": false,
+     "event_count": false,
+     "auto_keep": true
+    },
+    "raw": {
+     "value": 9000,
+     "string": "9000"
+    }
+   },
+   {
+    "id": 177,
+    "name": "Wear_Leveling_Count",
+    "value": 95,
+    "worst": 95,
+    "thresh": 0,
+    "when_failed": "",
+    "flags": {
+     "value": 51,
+     "string": "PO--CK",
+     "prefailure": true,
+     "updated_online": true,
+     "performance": false,
+     "error_rate": false,
+     "event_count": false,
+     "auto_keep": true
+    },
+    "raw": {
+     "value": 40,
+     "string": "40"
+    }
+   },
+   {
+    "id": 187,
+    "name": "Uncorrectable_Error_Cnt",
+    "value": 100,
+    "worst": 100,
+    "thresh": 0,
+    "when_failed": "",
+    "flags": {
+     "value": 50,
+     "string": "PO--CK",
+     "prefailure": false,
+     "updated_online": true,
+     "performance": false,
+     "error_rate": false,
+     "event_count": false,
+     "auto_keep": true
+    },
+    "raw": {
+     "value": 0,
+     "string": "0"
+    }
+   },
+   {
+    "id": 199,
+    "name": "CRC_Error_Count",
+    "value": 100,
+    "worst": 100,
+    "thresh": 0,
+    "when_failed": "",
+    "flags": {
+     "value": 50,
+     "string": "PO--CK",
+     "prefailure": false,
+     "updated_online": true,
+     "performance": false,
+     "error_rate": false,
+     "event_count": false,
+     "auto_keep": true
+    },
+    "raw": {
+     "value": 3,
+     "string": "3"
+    }
+   },
+   {
+    "id": 190,
+    "name": "Airflow_Temperature_Cel",
+    "value": 62,
+    "worst": 52,
+    "thresh": 0,
+    "when_failed": "",
+    "flags": {
+     "value": 50,
+     "string": "PO--CK",
+     "prefailure": false,
+     "updated_online": true,
+     "performance": false,
+     "error_rate": false,
+     "event_count": false,
+     "auto_keep": true
+    },
+    "raw": {
+     "value": 38,
+     "string": "38"
+    }
+   }
+  ]
+ },
+ "power_on_time": {
+  "hours": 9000
+ },
+ "power_cycle_count": 120,
+ "temperature": {
+  "current": 38
+ },
+ "ata_smart_error_log": {
+  "summary": {
+   "revision": 1,
+   "count": 0
+  }
+ },
+ "ata_smart_self_test_log": {
+  "standard": {
+   "revision": 1,
+   "table": []
+  }
+ },
+ "ata_device_statistics": {
+  "pages": [
+   {
+    "number": 7,
+    "name": "Solid State Device Statistics",
+    "revision": 1,
+    "table": [
+     {
+      "offset": 8,
+      "name": "Percentage Used Endurance Indicator",
+      "size": 1,
+      "value": 4,
+      "flags": {
+       "valid": true
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

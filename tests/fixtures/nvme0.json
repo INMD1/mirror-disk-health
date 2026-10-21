@@ -1,0 +1,82 @@
+{
+ "json_format_version": [
+  1,
+  0
+ ],
+ "smartctl": {
+  "version": [
+   7,
+   4
+  ],
+  "exit_status": 0
+ },
+ "device": {
+  "name": "/dev/nvme0",
+  "type": "nvme",
+  "protocol": "NVMe"
+ },
+ "model_name": "SAMSUNG MZQL23T8HCLS-00A07",
+ "serial_number": "S64HNE0R900001",
+ "firmware_version": "GDC5602Q",
+ "nvme_total_capacity": 3840755982336,
+ "user_capacity": {
+  "blocks": 7501476528,
+  "bytes": 3840755982336
+ },
+ "logical_block_size": 512,
+ "smart_support": {
+  "available": true,
+  "enabled": true
+ },
+ "smart_status": {
+  "passed": true,
+  "nvme": {
+   "value": 0
+  }
+ },
+ "nvme_smart_health_information_log": {
+  "critical_warning": 0,
+  "temperature": 46,
+  "available_spare": 100,
+  "available_spare_threshold": 10,
+  "percentage_used": 3,
+  "data_units_read": 1234567890,
+  "data_units_written": 987654321,
+  "host_reads": 1,
+  "host_writes": 2,
+  "controller_busy_time": 4321,
+  "power_cycles": 33,
+  "power_on_hours": 15000,
+  "unsafe_shutdowns": 12,
+  "media_errors": 0,
+  "num_err_log_entries": 77,
+  "warning_temp_time": 0,
+  "critical_comp_time": 0
+ },
+ "temperature": {
+  "current": 46
+ },
+ "power_cycle_count": 33,
+ "power_on_time": {
+  "hours": 15000
+ },
+ "nvme_self_test_log": {
+  "current_self_test_operation": {
+   "value": 0,
+   "string": "No self-test in progress"
+  },
+  "table": [
+   {
+    "self_test_code": {
+     "value": 1,
+     "string": "Short"
+    },
+    "self_test_result": {
+     "value": 0,
+     "string": "Completed without error"
+    },
+    "power_on_hours": 14990
+   }
+  ]
+ }
+}

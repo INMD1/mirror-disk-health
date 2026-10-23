@@ -5,7 +5,6 @@ dhctl.py — mirror-disk-health 제어 도구 (Python 3.6+, 표준 라이브러�
 
   python3 dhctl.py -c config.env ping          InfluxDB 연결 확인
   python3 dhctl.py -c config.env influx-init   DB + 보존정책(1.x) / bucket + DBRP(2.x) 생성
-  python3 dhctl.py -c config.env grafana       Grafana 데이터소스 + 폴더 + 대시보드 등록/갱신
   python3 dhctl.py -c config.env verify [--host mirror01] [--wait 120]
                                                InfluxDB 에 데이터가 들어오는지 확인
   python3 dhctl.py -c config.env query 'SHOW MEASUREMENTS'
@@ -27,14 +26,13 @@ import time
 
 try:  # Python 3
     from urllib.error import HTTPError, URLError
-    from urllib.parse import quote, urlencode
+    from urllib.parse import urlencode
     from urllib.request import Request, urlopen
 except ImportError:  # pragma: no cover
     print("Python 3 가 필요합니다", file=sys.stderr)
     sys.exit(1)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DASHBOARD_FILE = os.path.join(HERE, "grafana", "disk-health.json")
 
 
 class CliError(Exception):
@@ -366,129 +364,6 @@ def cmd_verify(cfg, args):
 
 
 # --------------------------------------------------------------------------- #
-# Grafana
-# --------------------------------------------------------------------------- #
-
-class Grafana(object):
-    def __init__(self, cfg):
-        url = cfg.get("GRAFANA_URL")
-        if not url:
-            raise CliError("GRAFANA_URL 이 비어 있습니다")
-        headers = {}
-        if cfg.get("GRAFANA_API_TOKEN"):
-            headers["Authorization"] = "Bearer " + cfg["GRAFANA_API_TOKEN"]
-        elif cfg.get("GRAFANA_USER"):
-            headers["Authorization"] = basic(cfg["GRAFANA_USER"], cfg.get("GRAFANA_PASSWORD", ""))
-        else:
-            raise CliError("GRAFANA_API_TOKEN 또는 GRAFANA_USER/GRAFANA_PASSWORD 가 필요합니다")
-        self.http = Http(url, headers, truthy(cfg.get("GRAFANA_INSECURE_SKIP_VERIFY")))
-
-    def call(self, method, path, ok=(200,), **kw):
-        st, p = self.http.request(method, path, **kw)
-        if st == 401:
-            raise CliError("Grafana 인증 실패(401): 계정/토큰 확인")
-        if st not in ok:
-            raise CliError("Grafana %s %s 실패(%s): %s" % (method, path, st, short(p)))
-        return st, p
-
-
-def datasource_payload(cfg, uid):
-    name = cfg.get("GRAFANA_DS_NAME") or "Disk Health InfluxDB"
-    url = cfg.get("GRAFANA_INFLUX_URL") or cfg.get("INFLUX_URL")
-    db = cfg.get("INFLUX_DB") or "disk_health"
-    ds = {
-        "name": name, "uid": uid, "type": "influxdb", "access": "proxy", "url": url,
-        "database": db, "basicAuth": False, "isDefault": False,
-        "jsonData": {"dbName": db, "httpMode": "POST", "timeInterval": "30s"},
-        "secureJsonData": {},
-    }
-    if truthy(cfg.get("INFLUX_INSECURE_SKIP_VERIFY")):
-        ds["jsonData"]["tlsSkipVerify"] = True
-    if str(cfg.get("INFLUX_VERSION", "1")) == "2":
-        # 2.x 를 InfluxQL(DBRP) 로 조회: Authorization: Token 헤더
-        ds["jsonData"]["version"] = "InfluxQL"
-        ds["jsonData"]["httpHeaderName1"] = "Authorization"
-        ds["secureJsonData"]["httpHeaderValue1"] = "Token " + cfg.get("INFLUX_TOKEN", "")
-    else:
-        ds["jsonData"]["version"] = "InfluxQL"
-        if cfg.get("INFLUX_USER"):
-            ds["user"] = cfg["INFLUX_USER"]
-            ds["secureJsonData"]["password"] = cfg.get("INFLUX_PASSWORD", "")
-    return ds
-
-
-def ensure_datasource(g, cfg):
-    want_uid = cfg.get("GRAFANA_DS_UID") or "disk-health-influx"
-    name = cfg.get("GRAFANA_DS_NAME") or "Disk Health InfluxDB"
-    st, cur = g.http.request("GET", "/api/datasources/uid/" + quote(want_uid, safe=""))
-    if st != 200:
-        st, cur = g.http.request("GET", "/api/datasources/name/" + quote(name, safe=""))
-    if st == 200 and isinstance(cur, dict):
-        uid = cur.get("uid") or want_uid
-        body = datasource_payload(cfg, uid)
-        body["id"] = cur.get("id")
-        if cur.get("version") is not None:
-            body["version"] = cur["version"]
-        st2, p = g.http.request("PUT", "/api/datasources/uid/" + quote(uid, safe=""), body=body)
-        if st2 in (404, 405) and cur.get("id"):
-            st2, p = g.http.request("PUT", "/api/datasources/%s" % cur["id"], body=body)
-        if st2 != 200:
-            raise CliError("데이터소스 갱신 실패(%s): %s" % (st2, short(p)))
-        print("데이터소스 갱신: %s (uid=%s)" % (name, uid))
-    else:
-        body = datasource_payload(cfg, want_uid)
-        st2, p = g.http.request("POST", "/api/datasources", body=body)
-        if st2 != 200:
-            raise CliError("데이터소스 생성 실패(%s): %s" % (st2, short(p)))
-        uid = (p.get("datasource") or {}).get("uid") or want_uid
-        print("데이터소스 생성: %s (uid=%s)" % (name, uid))
-    st, p = g.http.request("GET", "/api/datasources/uid/%s/health" % quote(uid, safe=""), timeout=30)
-    if st == 200:
-        print("  연결 테스트: %s" % ((p or {}).get("message") or "OK"))
-    elif st != 404:
-        print("  경고: 연결 테스트 실패(%s): %s" % (st, short(p)), file=sys.stderr)
-        print("        Grafana 서버에서 %s 접근 가능한지 확인 (GRAFANA_INFLUX_URL)"
-              % (cfg.get("GRAFANA_INFLUX_URL") or cfg.get("INFLUX_URL")), file=sys.stderr)
-    return uid, name
-
-
-def ensure_folder(g, title):
-    _, folders = g.call("GET", "/api/folders", params={"limit": 1000})
-    for f in folders or []:
-        if f.get("title") == title:
-            return f
-    st, p = g.http.request("POST", "/api/folders", body={"title": title, "uid": "disk-health"})
-    if st == 200:
-        print("폴더 생성: %s" % title)
-        return p
-    if st in (409, 412):
-        _, p = g.call("GET", "/api/folders/disk-health")
-        return p
-    raise CliError("폴더 생성 실패(%s): %s" % (st, short(p)))
-
-
-def cmd_grafana(cfg, args):
-    path = args.dashboard or DASHBOARD_FILE
-    with open(path, "r", encoding="utf-8") as fh:
-        dash = json.load(fh)
-    g = Grafana(cfg)
-    g.call("GET", "/api/health")
-    uid, name = ensure_datasource(g, cfg)
-    folder = ensure_folder(g, cfg.get("GRAFANA_FOLDER") or "Disk Health")
-
-    dash.pop("id", None)
-    for var in dash.get("templating", {}).get("list", []):
-        if var.get("name") == "ds" and var.get("type") == "datasource":
-            var["current"] = {"selected": True, "text": name, "value": uid}
-    body = {"dashboard": dash, "overwrite": True, "message": "mirror-disk-health dhctl.py",
-            "folderUid": folder.get("uid")}
-    if folder.get("id") is not None:
-        body["folderId"] = folder["id"]
-    _, p = g.call("POST", "/api/dashboards/db", body=body)
-    print("대시보드 등록: %s%s" % (cfg["GRAFANA_URL"].rstrip("/"), p.get("url", "")))
-
-
-# --------------------------------------------------------------------------- #
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="mirror-disk-health 제어 도구")
@@ -497,8 +372,6 @@ def main(argv=None):
     sub.required = True
     sub.add_parser("ping", help="InfluxDB 연결 확인")
     sub.add_parser("influx-init", help="DB/보존정책(1.x) 또는 bucket/DBRP(2.x) 생성")
-    gp = sub.add_parser("grafana", help="Grafana 데이터소스/대시보드 등록")
-    gp.add_argument("--dashboard", help="대시보드 JSON 경로 (기본: grafana/disk-health.json)")
     vp = sub.add_parser("verify", help="데이터 수신 확인")
     vp.add_argument("--host", default="")
     vp.add_argument("--wait", type=int, default=0, help="데이터가 보일 때까지 기다릴 최대 초")
@@ -509,7 +382,7 @@ def main(argv=None):
     qp.add_argument("--write", action="store_true", help="POST 로 실행 (CREATE/DROP 등)")
     args = ap.parse_args(argv)
     cfg = load_env(args.config)
-    handler = {"ping": cmd_ping, "influx-init": cmd_influx_init, "grafana": cmd_grafana,
+    handler = {"ping": cmd_ping, "influx-init": cmd_influx_init,
                "verify": cmd_verify, "query": cmd_query}[args.cmd]
     try:
         rc = handler(cfg, args)

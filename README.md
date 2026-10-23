@@ -1,19 +1,69 @@
 # mirror-disk-health
 
 미러 서버의 **물리 디스크 건강 상태(SMART)** 를 smartmontools 로 수집해서 컨트롤러의 **InfluxDB** 에 저장하고,
-**Grafana** 대시보드로 모니터링하는 레포입니다. (Kolla-Ansible 이 띄운 InfluxDB 1.x / Grafana 를 기준으로 작성, InfluxDB 2.x 도 지원)
+**Grafana** 대시보드로 모니터링하는 레포입니다.
+
+## 요구사항
+
+- 미러 서버: Linux + systemd, Debian/Ubuntu(apt) 또는 RHEL/Rocky(dnf/yum), Python 3.6+, smartmontools **7.0+** (Ubuntu 20.04 / Debian 11 / RHEL 8 이상 기본 패키지면 충족)
+- 인터넷: InfluxData 저장소(`repos.influxdata.com`)에서 Telegraf 설치 (이미 Telegraf 가 있으면 생략)
+- 네트워크: 미러 서버 → 컨트롤러 InfluxDB `:8086`, Grafana → InfluxDB `:8086`
+
+## 빠른 시작
+
+###  디스크 서버에 설치
+
+```bash
+git clone <this-repo> mirror-disk-health && cd mirror-disk-health
+cp config.env.example config.env
+vi config.env            # INFLUX_URL, (필요 시) EXTRA_DEVICES 등
+sudo ./install.sh
+```
+
+
+### 2. 대시보드 가져오기 (선택)
+
+Grafana 에서 `grafana/disk-health.json` 을 Import 하고 상단의 `InfluxDB` 변수에서 데이터소스(InfluxQL, DB `disk_health`)를 고르면 됩니다. 이 레포는 Grafana 에 자동 등록하지 않습니다.
+
+### 3. 확인
+
+```bash
+sudo python3 /opt/disk-health/dhctl.py -c /etc/disk-health/config.env verify --host $(hostname -s)
+systemctl status telegraf-disk-health
+journalctl -u telegraf-disk-health -f
+sudo -u telegraf python3 /opt/disk-health/collector/disk_health_collector.py   # 수집기 출력 직접 보기
+```
+
+SMART 는 `SMART_INTERVAL`(기본 5분) 마다 올라가므로 첫 데이터까지 최대 5분 걸립니다. I/O 지표는 30초 안에 보입니다.
+
+## 제거
+
+```bash
+sudo ./uninstall.sh            # 서비스·설정·sudoers 제거, smartd.conf 원복 (InfluxDB 데이터/Grafana 는 유지)
+sudo ./uninstall.sh --purge    # + telegraf 패키지·InfluxData 저장소 제거
+```
+
+## 개발 / 테스트
+
+```bash
+make test        # 수집기(ATA HDD/SSD, NVMe, SAS, MegaRAID 실패 디스크, 스탠바이, ZFS 픽스처) + dhctl(목 InfluxDB) 단위 테스트
+make lint        # shellcheck + pyflakes
+make dashboard   # grafana/disk-health.json 재생성
+make render      # 시스템 변경 없이 생성될 설정을 ./out 에 출력
+make influxql    # 대시보드의 모든 InfluxQL 을 공식 influxql 파서로 문법 검증 (Go 필요)
+```
 
 ```
- ┌──────────────── 미러 서버 ─────────────────┐            ┌────────── 컨트롤러 ──────────┐
- │ smartd ── 정기 셀프테스트(Short 매일/Long 매주) │            │                               │
- │                                            │  HTTP 8086 │  InfluxDB  db=disk_health      │
- │ telegraf-disk-health.service               │ ─────────▶ │  (RP disk_health, 400d)        │
- │  ├ exec: disk_health_collector.py (5m)     │            │        ▲                      │
- │  │    └ sudo smartctl -j  (ATA/NVMe/SAS/   │            │        │ InfluxQL              │
- │  │       MegaRAID) + zpool (ZFS)           │            │  Grafana "Disk Health (SMART)" │
- │  ├ diskio / disk / mdstat (30s)            │            │                               │
- └────────────────────────────────────────────┘            └───────────────────────────────┘
+.
+├── install.sh / uninstall.sh       미러 서버 설치·제거
+├── config.env.example              설정 템플릿
+├── dhctl.py                        ping / influx-init / verify / query
+├── collector/disk_health_collector.py   smartctl JSON → line protocol
+├── grafana/build_dashboard.py      대시보드 생성기
+├── grafana/disk-health.json        생성된 대시보드
+└── tests/                          단위 테스트, 픽스처, InfluxQL 검사기
 ```
+
 
 ## 무엇을 보나
 
@@ -40,75 +90,6 @@
 
 > NVMe 의 `num_err_log_entries` 는 드라이버가 미지원 기능을 조회할 때도 증가하는 경우가 많아 상태에 반영하지 않고 값만 기록합니다.
 
-## 요구사항
-
-- 미러 서버: Linux + systemd, Debian/Ubuntu(apt) 또는 RHEL/Rocky(dnf/yum), Python 3.6+, smartmontools **7.0+** (Ubuntu 20.04 / Debian 11 / RHEL 8 이상 기본 패키지면 충족)
-- 인터넷: InfluxData 저장소(`repos.influxdata.com`)에서 Telegraf 설치 (이미 Telegraf 가 있으면 생략)
-- 네트워크: 미러 서버 → 컨트롤러 InfluxDB `:8086`, Grafana → InfluxDB `:8086`
-
-## 빠른 시작
-
-### 0. 컨트롤러 정보 확인 (Kolla-Ansible)
-
-```bash
-# 컨트롤러에서
-grep -E '^(enable_influxdb|enable_grafana|kolla_internal_vip_address|network_interface|api_interface)' /etc/kolla/globals.yml
-docker ps --format '{{.Names}}' | grep -E 'influxdb|grafana'
-ss -ltnp | grep 8086                       # InfluxDB 가 바인딩된 IP 확인 (api_interface IP)
-grep grafana_admin_password /etc/kolla/passwords.yml
-
-# 미러 서버에서 접근 확인 (204 가 나와야 함)
-curl -i http://<컨트롤러 내부 IP>:8086/ping
-```
-
-Kolla 의 InfluxDB 는 기본적으로 인증이 꺼져 있습니다. 켜 두었다면 `INFLUX_USER/PASSWORD`(쓰기용)와 `INFLUX_ADMIN_USER/PASSWORD`(DB 생성용)를 채우세요.
-
-### 1. 미러 서버에 설치
-
-```bash
-git clone <this-repo> mirror-disk-health && cd mirror-disk-health
-cp config.env.example config.env
-vi config.env            # INFLUX_URL, (필요 시) EXTRA_DEVICES 등
-sudo ./install.sh
-```
-
-`install.sh` 가 하는 일 (재실행해도 안전 — 설정 변경 후 다시 돌리면 됩니다)
-
-1. smartmontools, nvme-cli, sudo, python3 설치 + smartctl JSON 지원 확인
-2. Telegraf 설치 (InfluxData 공식 저장소, 키 지문 검증). 새로 설치한 경우 패키지 기본 `telegraf.service` 는 비활성화 (localhost 로 보내도록 되어 있어서)
-3. 수집기 → `/opt/disk-health/`, 설정 → `/etc/disk-health/`
-4. `/etc/sudoers.d/telegraf-disk-health` — telegraf 사용자에게 **`smartctl -j …` 만** 허용 (`visudo` 검증)
-5. smartd 정기 셀프테스트 설정 (기존 설정은 `*.orig-disk-health` 로 백업)
-6. 수집기 1회 실행 결과 요약 + `telegraf --test` 로 설정 검증
-7. InfluxDB 연결 확인 및 DB/보존정책 생성 (`dhctl.py influx-init`)
-8. `telegraf-disk-health.service` 시작 후 InfluxDB 에 데이터가 들어오는지 확인
-
-기존에 다른 용도로 Telegraf 를 쓰고 있어도 **별도 인스턴스**(`telegraf-disk-health.service`, 설정 `/etc/disk-health/`)로 돌기 때문에 서로 간섭하지 않습니다.
-
-### 2. Grafana 등록 (1회)
-
-Grafana 에 접근 가능한 곳(컨트롤러, 미러 서버, 작업 PC 어디든)에서:
-
-```bash
-python3 dhctl.py -c config.env grafana
-```
-
-- 데이터소스 `Disk Health InfluxDB` (uid `disk-health-influx`) 생성/갱신 + 연결 테스트
-- 폴더 `Disk Health` 에 대시보드 `Disk Health (SMART)` 등록 (재실행 시 덮어씀)
-- Grafana 가 InfluxDB 를 다른 주소로 봐야 하면 `GRAFANA_INFLUX_URL` 지정
-
-수동으로 하려면 `grafana/disk-health.json` 을 Import 하고 상단의 `InfluxDB` 변수에서 데이터소스를 고르면 됩니다.
-
-### 3. 확인
-
-```bash
-sudo python3 /opt/disk-health/dhctl.py -c /etc/disk-health/config.env verify --host $(hostname -s)
-systemctl status telegraf-disk-health
-journalctl -u telegraf-disk-health -f
-sudo -u telegraf python3 /opt/disk-health/collector/disk_health_collector.py   # 수집기 출력 직접 보기
-```
-
-SMART 는 `SMART_INTERVAL`(기본 5분) 마다 올라가므로 첫 데이터까지 최대 5분 걸립니다. I/O 지표는 30초 안에 보입니다.
 
 ## 대시보드
 
@@ -129,7 +110,7 @@ SMART 는 `SMART_INTERVAL`(기본 5분) 마다 올라가므로 첫 데이터까�
 
 ### 알림 예시 (Grafana Alerting)
 
-데이터소스 `Disk Health InfluxDB`, 쿼리:
+InfluxDB 데이터소스, 쿼리:
 
 ```sql
 SELECT max("status_code") FROM "smart_device" WHERE $timeFilter GROUP BY "host", "device", "model"
@@ -154,7 +135,6 @@ SELECT max("status_code") FROM "smart_device" WHERE $timeFilter GROUP BY "host",
 | `TEMP_WARN_HDD/SSD/NVME` | `50/65/70` | 경고 온도 |
 | `WEAR_WARN_PERCENT` | `80` | 수명 사용률 경고 기준 |
 | `MANAGE_SMARTD` / `SMARTD_SCHEDULE` | `yes` / `(S/../.././02\|L/../../7/03)` | 매일 02시 Short, 일요일 03시 Long |
-| `GRAFANA_*` | | `dhctl.py grafana` 용 |
 
 `/etc/disk-health/collector.env` 는 `install.sh` 가 생성합니다. 수집기 옵션만 바꾸고 싶으면 이 파일을 고쳐도 되지만 재설치 시 덮어써집니다.
 
@@ -183,30 +163,3 @@ SELECT max("status_code") FROM "smart_device" WHERE $timeFilter GROUP BY "host",
 | 기존 DB 를 재사용했더니 옛 데이터가 안 보임 | `influx-init` 이 기본 RP 를 `disk_health` 로 바꿨기 때문. 옛 데이터는 `"autogen".measurement` 로 조회 |
 | Long 셀프테스트 때 I/O 지연 | `SMARTD_SCHEDULE` 에서 Long 주기를 월 1회(`L/../01/./03`) 등으로 조정 후 `install.sh` 재실행 |
 
-## 제거
-
-```bash
-sudo ./uninstall.sh            # 서비스·설정·sudoers 제거, smartd.conf 원복 (InfluxDB 데이터/Grafana 는 유지)
-sudo ./uninstall.sh --purge    # + telegraf 패키지·InfluxData 저장소 제거
-```
-
-## 개발 / 테스트
-
-```bash
-make test        # 수집기(ATA HDD/SSD, NVMe, SAS, MegaRAID 실패 디스크, 스탠바이, ZFS 픽스처) + dhctl(목 InfluxDB/Grafana) 단위 테스트
-make lint        # shellcheck + pyflakes
-make dashboard   # grafana/disk-health.json 재생성
-make render      # 시스템 변경 없이 생성될 설정을 ./out 에 출력
-make influxql    # 대시보드의 모든 InfluxQL 을 공식 influxql 파서로 문법 검증 (Go 필요)
-```
-
-```
-.
-├── install.sh / uninstall.sh       미러 서버 설치·제거
-├── config.env.example              설정 템플릿
-├── dhctl.py                        ping / influx-init / grafana / verify / query
-├── collector/disk_health_collector.py   smartctl JSON → line protocol
-├── grafana/build_dashboard.py      대시보드 생성기
-├── grafana/disk-health.json        생성된 대시보드
-└── tests/                          단위 테스트, 픽스처, InfluxQL 검사기
-```

@@ -453,5 +453,4 @@ ${c_ok}설치 완료${c_off}
   - SMART 데이터는 ${SMART_INTERVAL} 주기로 올라갑니다 (첫 수집까지 최대 ${SMART_INTERVAL})
   - 상태 확인:    systemctl status $UNIT ; journalctl -u $UNIT -f
   - 데이터 확인:  sudo python3 $PREFIX/dhctl.py -c $ETC/config.env verify --host $HOST_TAG
-  - Grafana 등록: python3 dhctl.py -c config.env grafana   (Grafana 에 접근 가능한 곳에서 1회)
 EOF

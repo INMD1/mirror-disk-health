@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dhctl.py 테스트 — InfluxDB 1.x / 2.x, Grafana HTTP API 를 흉내 내는 목 서버 사용."""
+"""dhctl.py 테스트 — InfluxDB 1.x / 2.x HTTP API 를 흉내 내는 목 서버 사용."""
 import base64
 import contextlib
 import io
@@ -27,9 +27,6 @@ class State(object):
         self.auth = None          # 기대하는 Authorization 헤더 (None = 인증 없음)
         self.buckets = {}
         self.dbrps = []
-        self.ds = {}              # uid -> datasource
-        self.folders = []
-        self.dashboards = []
         self.requests = []
 
 
@@ -88,33 +85,6 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/v2/dbrps" and method == "POST":
             S.dbrps.append(body)
             return self._send(201, body)
-        # ---------------- Grafana ----------------
-        if p == "/api/health":
-            return self._send(200, {"database": "ok"})
-        if p.startswith("/api/datasources/uid/") and p.endswith("/health"):
-            return self._send(200, {"status": "OK", "message": "datasource is working. 7 measurements found"})
-        if p.startswith("/api/datasources/uid/"):
-            uid = p.rsplit("/", 1)[1]
-            if method == "GET":
-                return self._send(200, S.ds[uid]) if uid in S.ds else self._send(404, {"message": "not found"})
-            if method == "PUT":
-                S.ds[uid] = dict(body, version=S.ds[uid].get("version", 1) + 1)
-                return self._send(200, {"datasource": S.ds[uid]})
-        if p.startswith("/api/datasources/name/"):
-            return self._send(404, {"message": "not found"})
-        if p == "/api/datasources" and method == "POST":
-            ds = dict(body, id=len(S.ds) + 1, version=1)
-            S.ds[ds["uid"]] = ds
-            return self._send(200, {"datasource": ds, "id": ds["id"]})
-        if p == "/api/folders" and method == "GET":
-            return self._send(200, S.folders)
-        if p == "/api/folders" and method == "POST":
-            f = {"id": 7, "uid": body["uid"], "title": body["title"]}
-            S.folders.append(f)
-            return self._send(200, f)
-        if p == "/api/dashboards/db":
-            S.dashboards.append(body)
-            return self._send(200, {"status": "success", "url": "/d/%s/disk-health" % body["dashboard"]["uid"]})
         return self._send(404, {"message": "no route %s %s" % (method, p)})
 
     def _influxql(self, q):
@@ -186,8 +156,7 @@ class DhctlTest(unittest.TestCase):
 
     def v1(self, **kw):
         env = {"INFLUX_VERSION": "1", "INFLUX_URL": self.url, "INFLUX_DB": "disk_health",
-               "INFLUX_RETENTION": "400d", "GRAFANA_URL": self.url, "GRAFANA_USER": "admin",
-               "GRAFANA_PASSWORD": "pw"}
+               "INFLUX_RETENTION": "400d"}
         env.update(kw)
         return env
 
@@ -228,35 +197,6 @@ class DhctlTest(unittest.TestCase):
         rc, out, err = self.run_cli(env, "influx-init")   # 두 번째 실행: 중복 생성 없음
         self.assertEqual(rc, 0, err)
         self.assertEqual(len(S.dbrps), 1)
-
-    def test_grafana_provision_and_update(self):
-        rc, out, err = self.run_cli(self.v1(INFLUX_USER="u", INFLUX_PASSWORD="p"), "grafana")
-        self.assertEqual(rc, 0, err)
-        ds = S.ds["disk-health-influx"]
-        self.assertEqual(ds["type"], "influxdb")
-        self.assertEqual(ds["jsonData"]["dbName"], "disk_health")
-        self.assertEqual(ds["secureJsonData"]["password"], "p")
-        self.assertEqual(S.folders[0]["title"], "Disk Health")
-        dash = S.dashboards[0]
-        self.assertTrue(dash["overwrite"])
-        self.assertEqual(dash["folderUid"], "disk-health")
-        dsvar = [v for v in dash["dashboard"]["templating"]["list"] if v["name"] == "ds"][0]
-        self.assertEqual(dsvar["current"]["value"], "disk-health-influx")
-        self.assertNotIn("id", dash["dashboard"])
-        # 재실행 → 데이터소스는 PUT 으로 갱신, 폴더 재사용
-        rc, out, err = self.run_cli(self.v1(), "grafana")
-        self.assertEqual(rc, 0, err)
-        self.assertEqual(len(S.folders), 1)
-        self.assertEqual(S.ds["disk-health-influx"]["version"], 2)
-        self.assertIn("갱신", out)
-
-    def test_grafana_v2_header(self):
-        env = self.v1(INFLUX_VERSION="2", INFLUX_TOKEN="tok")
-        rc, _, err = self.run_cli(env, "grafana")
-        self.assertEqual(rc, 0, err)
-        ds = S.ds["disk-health-influx"]
-        self.assertEqual(ds["jsonData"]["httpHeaderName1"], "Authorization")
-        self.assertEqual(ds["secureJsonData"]["httpHeaderValue1"], "Token tok")
 
     def test_verify(self):
         rc, out, err = self.run_cli(self.v1(), "verify", "--host", "mirror01", "--measurement", "diskio")
